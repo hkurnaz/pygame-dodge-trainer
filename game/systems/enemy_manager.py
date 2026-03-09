@@ -1,9 +1,9 @@
 """Enemy management system."""
 
 import pygame
-from game.entities.enemy import Enemy, EnemyProjectile, SpearEnemy
+from game.entities.enemy import Enemy, EnemyProjectile, SpearEnemy, RogueEnemy
 from game.config import (
-    ENEMY_SPAWN_INTERVAL, SPEAR_ENEMY_SPAWN_INTERVAL,
+    ENEMY_SPAWN_INTERVAL, SPEAR_ENEMY_SPAWN_INTERVAL, ROGUE_ENEMY_SPAWN_INTERVAL,
     DIFFICULTY_INCREASE_INTERVAL, SPAWN_RATE_MULTIPLIER
 )
 
@@ -14,18 +14,22 @@ class EnemyManager:
     def __init__(self, game_map=None):
         self.enemies: list = []
         self.spear_enemies: list = []
+        self.rogue_enemies: list = []
         self.enemy_projectiles: list = []
         
         # Base spawn intervals
         self.base_enemy_spawn_interval = ENEMY_SPAWN_INTERVAL
         self.base_spear_spawn_interval = SPEAR_ENEMY_SPAWN_INTERVAL
+        self.base_rogue_spawn_interval = ROGUE_ENEMY_SPAWN_INTERVAL
         
         # Current spawn intervals (decrease over time)
         self.current_enemy_spawn_interval = ENEMY_SPAWN_INTERVAL
         self.current_spear_spawn_interval = SPEAR_ENEMY_SPAWN_INTERVAL
+        self.current_rogue_spawn_interval = ROGUE_ENEMY_SPAWN_INTERVAL
         
         self.spawn_timer = ENEMY_SPAWN_INTERVAL
         self.spear_spawn_timer = SPEAR_ENEMY_SPAWN_INTERVAL
+        self.rogue_spawn_timer = ROGUE_ENEMY_SPAWN_INTERVAL
         self.game_map = game_map
         
         # Difficulty scaling
@@ -46,6 +50,11 @@ class EnemyManager:
         enemy = SpearEnemy.spawn_random(self.game_map)
         self.spear_enemies.append(enemy)
     
+    def spawn_rogue_enemy(self):
+        """Spawn a new rogue enemy at random position."""
+        enemy = RogueEnemy.spawn_random(self.game_map)
+        self.rogue_enemies.append(enemy)
+    
     def update(self, dt: float, player_x: float, player_y: float):
         """Update all enemies and their projectiles."""
         # Update difficulty timer
@@ -62,6 +71,10 @@ class EnemyManager:
                 1.5,  # Minimum spawn interval
                 self.current_spear_spawn_interval * SPAWN_RATE_MULTIPLIER
             )
+            self.current_rogue_spawn_interval = max(
+                2.0,  # Minimum spawn interval
+                self.current_rogue_spawn_interval * SPAWN_RATE_MULTIPLIER
+            )
         
         # Update spawn timer for shooting enemies
         self.spawn_timer -= dt
@@ -75,6 +88,12 @@ class EnemyManager:
             self.spawn_spear_enemy()
             self.spear_spawn_timer = self.current_spear_spawn_interval
         
+        # Update spawn timer for rogue enemies
+        self.rogue_spawn_timer -= dt
+        if self.rogue_spawn_timer <= 0:
+            self.spawn_rogue_enemy()
+            self.rogue_spawn_timer = self.current_rogue_spawn_interval
+        
         # Update shooting enemies and collect new projectiles
         for enemy in self.enemies:
             new_projectiles = enemy.update(dt, player_x, player_y)
@@ -84,6 +103,10 @@ class EnemyManager:
         for spear_enemy in self.spear_enemies:
             spear_enemy.update(dt, player_x, player_y)
         
+        # Update rogue enemies (follow player fast)
+        for rogue_enemy in self.rogue_enemies:
+            rogue_enemy.update(dt, player_x, player_y)
+        
         # Update all enemy projectiles
         for projectile in self.enemy_projectiles:
             projectile.update(dt)
@@ -91,6 +114,7 @@ class EnemyManager:
         # Remove inactive enemies and projectiles
         self.enemies = [e for e in self.enemies if e.active]
         self.spear_enemies = [e for e in self.spear_enemies if e.active]
+        self.rogue_enemies = [e for e in self.rogue_enemies if e.active]
         self.enemy_projectiles = [p for p in self.enemy_projectiles if p.active]
     
     def check_collision(self, player_rect: pygame.Rect) -> bool:
@@ -103,6 +127,11 @@ class EnemyManager:
         # Check spear collisions
         for spear_enemy in self.spear_enemies:
             if spear_enemy.check_spear_collision(player_rect):
+                return True
+        
+        # Check knife collisions
+        for rogue_enemy in self.rogue_enemies:
+            if rogue_enemy.check_knife_collision(player_rect):
                 return True
         
         return False
@@ -121,6 +150,14 @@ class EnemyManager:
         for spear_enemy in self.spear_enemies:
             spear_enemy.draw_spear(surface, player_x, player_y)
         
+        # Draw rogue enemies (body first, then knife)
+        for rogue_enemy in self.rogue_enemies:
+            rogue_enemy.draw(surface)
+        
+        # Draw knives (after bodies so they appear on top)
+        for rogue_enemy in self.rogue_enemies:
+            rogue_enemy.draw_knife(surface, player_x, player_y)
+        
         # Draw projectiles
         for projectile in self.enemy_projectiles:
             projectile.draw(surface)
@@ -129,13 +166,16 @@ class EnemyManager:
         """Reset enemy manager state."""
         self.enemies.clear()
         self.spear_enemies.clear()
+        self.rogue_enemies.clear()
         self.enemy_projectiles.clear()
         
         # Reset spawn intervals
         self.current_enemy_spawn_interval = self.base_enemy_spawn_interval
         self.current_spear_spawn_interval = self.base_spear_spawn_interval
+        self.current_rogue_spawn_interval = self.base_rogue_spawn_interval
         self.spawn_timer = self.base_enemy_spawn_interval
         self.spear_spawn_timer = self.base_spear_spawn_interval
+        self.rogue_spawn_timer = self.base_rogue_spawn_interval
         
         # Reset difficulty
         self.difficulty_timer = 0.0

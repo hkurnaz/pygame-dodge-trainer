@@ -59,6 +59,15 @@ SPEAR_ENEMY_SPEED = 100  # pixels per second
 SPEAR_LENGTH = 50
 SPEAR_ENEMY_SPAWN_INTERVAL = 5.0  # seconds (base, will decrease over time)
 
+# Rogue enemy settings (fast, short-range knife)
+ROGUE_ENEMY_SIZE = 32
+ROGUE_ENEMY_COLOR = (50, 50, 50)  # Dark gray/black
+ROGUE_ENEMY_OUTLINE_COLOR = (30, 30, 30)
+ROGUE_ENEMY_SPEED = 180  # Faster than spear enemy (100)
+ROGUE_CLOAK_COLOR = (40, 40, 60)  # Dark blue-gray cloak
+KNIFE_LENGTH = 25  # Shorter than spear (50)
+ROGUE_ENEMY_SPAWN_INTERVAL = 6.0  # seconds (base, will decrease over time)
+
 # Difficulty scaling
 DIFFICULTY_INCREASE_INTERVAL = 10.0  # seconds
 SPAWN_RATE_MULTIPLIER = 0.85  # multiply spawn interval by this every 10 seconds
@@ -74,3 +83,16 @@ GRASS_COLOR = (45, 85, 45)
 PATH_COLOR = (80, 75, 65)
 RIVER_COLOR = (40, 80, 120)
 BUSH_COLOR = (50, 100, 50)
+
+# Zed character settings
+ZED_Q_COOLDOWN = 1.5  # seconds
+ZED_Q_RANGE = 350  # pixels - medium range
+ZED_Q_SPEED = 550
+ZED_Q_SIZE = 14
+
+ZED_W_COOLDOWN = 8.0  # seconds
+ZED_W_SHADOW_DISTANCE = 200  # pixels (about 4 blocks)
+ZED_W_SHADOW_DURATION = 3.0  # seconds
+
+ZED_E_COOLDOWN = 4.0  # seconds
+ZED_E_RADIUS = 80  # Larger than spear length (50)

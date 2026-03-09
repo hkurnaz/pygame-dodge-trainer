@@ -8,7 +8,9 @@ from game.config import (
     ENEMY_PROJECTILE_SIZE, ENEMY_PROJECTILE_SPEED, ENEMY_PROJECTILE_COLOR,
     ENEMY_SHOOT_INTERVAL, SCREEN_WIDTH, SCREEN_HEIGHT,
     SPEAR_ENEMY_SIZE, SPEAR_ENEMY_COLOR, SPEAR_ENEMY_OUTLINE_COLOR,
-    SPEAR_ENEMY_SPEED, SPEAR_LENGTH
+    SPEAR_ENEMY_SPEED, SPEAR_LENGTH,
+    ROGUE_ENEMY_SIZE, ROGUE_ENEMY_COLOR, ROGUE_ENEMY_OUTLINE_COLOR,
+    ROGUE_ENEMY_SPEED, ROGUE_CLOAK_COLOR, KNIFE_LENGTH
 )
 
 
@@ -403,6 +405,230 @@ class SpearEnemy:
             y = random.randint(margin, SCREEN_HEIGHT - margin)
         
         enemy = SpearEnemy(x, y)
+        if game_map:
+            enemy.set_map(game_map)
+        
+        return enemy
+
+
+class RogueEnemy:
+    """Fast enemy with a short-range knife. Moves faster than spear enemy but has less range."""
+    
+    def __init__(self, x: float, y: float):
+        self.x = x
+        self.y = y
+        self.size = ROGUE_ENEMY_SIZE
+        self.speed = ROGUE_ENEMY_SPEED
+        self.color = ROGUE_ENEMY_COLOR
+        self.outline_color = ROGUE_ENEMY_OUTLINE_COLOR
+        self.cloak_color = ROGUE_CLOAK_COLOR
+        self.knife_length = KNIFE_LENGTH
+        self.active = True
+        self.game_map = None
+    
+    def set_map(self, game_map):
+        """Set the map reference for collision detection."""
+        self.game_map = game_map
+    
+    @property
+    def rect(self) -> pygame.Rect:
+        """Get enemy bounding rectangle."""
+        return pygame.Rect(
+            self.x - self.size // 2,
+            self.y - self.size // 2,
+            self.size,
+            self.size
+        )
+    
+    def _check_wall_collision(self, new_x: float, new_y: float) -> bool:
+        """Check if position would collide with a wall."""
+        if self.game_map is None:
+            return False
+        
+        test_rect = pygame.Rect(
+            new_x - self.size // 2,
+            new_y - self.size // 2,
+            self.size,
+            self.size
+        )
+        return self.game_map.check_collision(test_rect)
+    
+    def update(self, dt: float, player_x: float, player_y: float):
+        """Update enemy position to follow player (fast movement)."""
+        # Calculate direction to player
+        dx = player_x - self.x
+        dy = player_y - self.y
+        distance = math.sqrt(dx * dx + dy * dy)
+        
+        if distance > 0:
+            # Normalize direction
+            dx = dx / distance
+            dy = dy / distance
+            
+            # Move towards player (faster than spear enemy)
+            move_distance = self.speed * dt
+            
+            new_x = self.x + dx * move_distance
+            new_y = self.y + dy * move_distance
+            
+            # Check wall collision with sliding
+            if not self._check_wall_collision(new_x, new_y):
+                self.x = new_x
+                self.y = new_y
+            else:
+                # Try moving only in X
+                if not self._check_wall_collision(new_x, self.y):
+                    self.x = new_x
+                # Try moving only in Y
+                elif not self._check_wall_collision(self.x, new_y):
+                    self.y = new_y
+    
+    def check_knife_collision(self, player_rect: pygame.Rect) -> bool:
+        """Check if knife collides with player."""
+        # Calculate angle to player for knife direction
+        dx = player_rect.centerx - self.x
+        dy = player_rect.centery - self.y
+        distance = math.sqrt(dx * dx + dy * dy)
+        
+        if distance == 0:
+            return False
+        
+        # Normalize direction
+        dx = dx / distance
+        dy = dy / distance
+        
+        # Knife tip position
+        knife_tip_x = self.x + dx * (self.size // 2 + self.knife_length)
+        knife_tip_y = self.y + dy * (self.size // 2 + self.knife_length)
+        
+        # Check if knife tip is inside player rect
+        if player_rect.collidepoint(knife_tip_x, knife_tip_y):
+            return True
+        
+        # Also check along the knife blade
+        for i in range(1, int(self.knife_length)):
+            check_x = self.x + dx * (self.size // 2 + i)
+            check_y = self.y + dy * (self.size // 2 + i)
+            if player_rect.collidepoint(check_x, check_y):
+                return True
+        
+        return False
+    
+    def draw(self, surface: pygame.Surface):
+        """Draw the rogue enemy (thief/rogue appearance with cloak)."""
+        center_x = int(self.x)
+        center_y = int(self.y)
+        
+        # Draw shadow
+        shadow_surface = pygame.Surface((self.size + 10, self.size // 2), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow_surface, (0, 0, 0, 50), (0, 0, self.size + 10, self.size // 2))
+        surface.blit(shadow_surface, (center_x - (self.size + 10) // 2, center_y + self.size // 3))
+        
+        # Draw cloak (hood shape)
+        hood_points = [
+            (center_x - self.size // 2 - 2, center_y + self.size // 4),  # Bottom left
+            (center_x - self.size // 2, center_y - self.size // 4),  # Mid left
+            (center_x - self.size // 4, center_y - self.size // 2 - 5),  # Top left hood
+            (center_x, center_y - self.size // 2 - 8),  # Hood peak
+            (center_x + self.size // 4, center_y - self.size // 2 - 5),  # Top right hood
+            (center_x + self.size // 2, center_y - self.size // 4),  # Mid right
+            (center_x + self.size // 2 + 2, center_y + self.size // 4),  # Bottom right
+        ]
+        pygame.draw.polygon(surface, self.cloak_color, hood_points)
+        pygame.draw.polygon(surface, self.outline_color, hood_points, 2)
+        
+        # Draw face (darker, mysterious)
+        face_rect = pygame.Rect(center_x - self.size // 4, center_y - self.size // 4, 
+                                self.size // 2, self.size // 2)
+        pygame.draw.ellipse(surface, self.color, face_rect)
+        
+        # Draw menacing eyes (glowing yellow/orange for rogue look)
+        eye_offset = self.size // 6
+        eye_y = center_y - 2
+        
+        # Left eye (glowing)
+        pygame.draw.circle(surface, (255, 180, 50), (center_x - eye_offset, eye_y), 4)
+        pygame.draw.circle(surface, (255, 220, 100), (center_x - eye_offset, eye_y), 2)
+        
+        # Right eye (glowing)
+        pygame.draw.circle(surface, (255, 180, 50), (center_x + eye_offset, eye_y), 4)
+        pygame.draw.circle(surface, (255, 220, 100), (center_x + eye_offset, eye_y), 2)
+        
+        # Sinister smile (small curved line)
+        pygame.draw.arc(surface, (100, 100, 100),
+                       (center_x - 5, center_y + 2, 10, 6),
+                       3.14, 0, 1)
+    
+    def draw_knife(self, surface: pygame.Surface, player_x: float, player_y: float):
+        """Draw the knife pointing towards player."""
+        # Calculate direction to player
+        dx = player_x - self.x
+        dy = player_y - self.y
+        distance = math.sqrt(dx * dx + dy * dy)
+        
+        if distance == 0:
+            return
+        
+        # Normalize direction
+        dx = dx / distance
+        dy = dy / distance
+        
+        # Knife starts from enemy edge
+        start_x = self.x + dx * (self.size // 2)
+        start_y = self.y + dy * (self.size // 2)
+        
+        # Knife tip
+        tip_x = self.x + dx * (self.size // 2 + self.knife_length)
+        tip_y = self.y + dy * (self.size // 2 + self.knife_length)
+        
+        # Draw knife handle (dark brown)
+        handle_length = 8
+        handle_start_x = start_x
+        handle_start_y = start_y
+        handle_end_x = start_x + dx * handle_length
+        handle_end_y = start_y + dy * handle_length
+        
+        pygame.draw.line(surface, (60, 40, 20),
+                        (int(handle_start_x), int(handle_start_y)),
+                        (int(handle_end_x), int(handle_end_y)), 4)
+        
+        # Draw knife blade (silver/metallic)
+        blade_start_x = handle_end_x
+        blade_start_y = handle_end_y
+        blade_tip_x = tip_x
+        blade_tip_y = tip_y
+        
+        # Main blade line
+        pygame.draw.line(surface, (180, 180, 190),
+                        (int(blade_start_x), int(blade_start_y)),
+                        (int(blade_tip_x), int(blade_tip_y)), 3)
+        
+        # Blade edge (shiny)
+        pygame.draw.line(surface, (220, 220, 230),
+                        (int(blade_start_x), int(blade_start_y)),
+                        (int(blade_tip_x), int(blade_tip_y)), 1)
+    
+    @staticmethod
+    def spawn_random(game_map=None) -> 'RogueEnemy':
+        """Spawn rogue enemy at random position on screen edge."""
+        side = random.randint(0, 3)  # 0: top, 1: right, 2: bottom, 3: left
+        
+        margin = ROGUE_ENEMY_SIZE * 2
+        
+        if side == 0:  # Top
+            x = random.randint(margin, SCREEN_WIDTH - margin)
+            y = margin
+        elif side == 1:  # Right
+            x = SCREEN_WIDTH - margin
+            y = random.randint(margin, SCREEN_HEIGHT - margin)
+        elif side == 2:  # Bottom
+            x = random.randint(margin, SCREEN_WIDTH - margin)
+            y = SCREEN_HEIGHT - margin
+        else:  # Left
+            x = margin
+            y = random.randint(margin, SCREEN_HEIGHT - margin)
+        
+        enemy = RogueEnemy(x, y)
         if game_map:
             enemy.set_map(game_map)
         
