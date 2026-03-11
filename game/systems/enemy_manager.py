@@ -136,6 +136,32 @@ class EnemyManager:
         
         return False
     
+    def clear_nearby_enemies(self, x: float, y: float, radius: float):
+        """Clear enemies and projectiles near a position (for extra life effect)."""
+        # Clear nearby enemy projectiles
+        for projectile in self.enemy_projectiles:
+            dist = ((projectile.x - x) ** 2 + (projectile.y - y) ** 2) ** 0.5
+            if dist <= radius:
+                projectile.active = False
+        
+        # Clear nearby shooting enemies
+        for enemy in self.enemies:
+            dist = ((enemy.x - x) ** 2 + (enemy.y - y) ** 2) ** 0.5
+            if dist <= radius:
+                enemy.active = False
+        
+        # Clear nearby spear enemies
+        for enemy in self.spear_enemies:
+            dist = ((enemy.x - x) ** 2 + (enemy.y - y) ** 2) ** 0.5
+            if dist <= radius:
+                enemy.active = False
+        
+        # Clear nearby rogue enemies
+        for enemy in self.rogue_enemies:
+            dist = ((enemy.x - x) ** 2 + (enemy.y - y) ** 2) ** 0.5
+            if dist <= radius:
+                enemy.active = False
+    
     def draw(self, surface: pygame.Surface, player_x: float, player_y: float):
         """Draw all enemies and their projectiles."""
         # Draw shooting enemies

@@ -96,3 +96,20 @@ ZED_W_SHADOW_DURATION = 3.0  # seconds
 
 ZED_E_COOLDOWN = 4.0  # seconds
 ZED_E_RADIUS = 80  # Larger than spear length (50)
+
+# Game mode settings
+GAME_MODE_LEGACY = "legacy"      # Classic survival - no upgrades, no hearts
+GAME_MODE_SURVIVAL = "survival"  # Has XP, upgrades, and 3 hearts
+
+# XP and leveling settings (for Survival mode)
+XP_PER_KILL = 25
+XP_LEVEL_BASE = 50  # XP needed for level 2 (easier)
+XP_LEVEL_MULTIPLIER = 1.3  # Each level requires more XP (slower increase)
+
+# Survival mode settings
+SURVIVAL_MODE_HEARTS = 3  # Starting hearts in Survival mode
+
+# Upgrade tier probabilities
+TIER_COMMON_WEIGHT = 60
+TIER_EPIC_WEIGHT = 30
+TIER_LEGENDARY_WEIGHT = 10

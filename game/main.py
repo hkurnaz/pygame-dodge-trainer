@@ -3,9 +3,9 @@
 import pygame
 import sys
 
-from game.config import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
+from game.config import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, GAME_MODE_LEGACY, GAME_MODE_SURVIVAL, XP_PER_KILL
 from game.entities import Player
-from game.systems import InputHandler, Renderer, EnemyManager, GameMap
+from game.systems import InputHandler, Renderer, EnemyManager, GameMap, Upgrade, PlayerStats
 
 
 class Game:
@@ -31,10 +31,17 @@ class Game:
         self.running = True
         self.in_main_menu = True
         self.in_character_select = False
+        self.in_game_mode_select = False
         self.paused = False
         self.show_pause_confirmation = False
         self.game_over = False
         self.selected_character = 0  # 0 = Ezreal (only unlocked character)
+        self.game_mode = None  # Will be set when mode is selected
+        
+        # Survival mode specific (has XP, hearts, upgrades)
+        self.player_stats = None
+        self.upgrade_options = []
+        self.showing_upgrade_selection = False
         
         # Timer and score
         self.survival_time = 0.0
@@ -54,8 +61,17 @@ class Game:
         # Determine character type based on selection
         character_type = "ezreal" if self.selected_character == 0 else "zed"
         
+        # Create player stats for Survival mode (has XP, hearts, upgrades)
+        if self.game_mode == GAME_MODE_SURVIVAL:
+            self.player_stats = PlayerStats(character_type)
+            # Apply initial speed from stats
+            self.player.speed = self.player_stats.get_speed()
+        else:
+            # Legacy mode - no stats, one-hit death
+            self.player_stats = None
+        
         # Create systems
-        self.input_handler = InputHandler(self.player, character_type)
+        self.input_handler = InputHandler(self.player, character_type, self.player_stats)
         self.enemy_manager = EnemyManager(self.game_map)
         
         # Reset timers
@@ -65,6 +81,8 @@ class Game:
         self.game_over = False
         self.paused = False
         self.show_pause_confirmation = False
+        self.showing_upgrade_selection = False
+        self.upgrade_options = []
     
     def handle_events(self):
         """Process all pygame events."""
@@ -103,13 +121,55 @@ class Game:
                                 self.selected_character = i
                     
                     if self.renderer.select_button.is_clicked(mouse_pos):
-                        # Start game with selected character
+                        # Go to game mode selection
                         if self.selected_character in [0, 1]:  # Ezreal or Zed
                             self.in_character_select = False
-                            self.reset_game()
+                            self.in_game_mode_select = True
                     elif self.renderer.back_button.is_clicked(mouse_pos):
                         self.in_character_select = False
                         self.in_main_menu = True
+                continue
+            
+            # Handle game mode selection events
+            if self.in_game_mode_select:
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Survival button - has XP, hearts, upgrades
+                    if self.renderer.survival_button.is_clicked(mouse_pos):
+                        self.game_mode = GAME_MODE_SURVIVAL
+                        self.in_game_mode_select = False
+                        self.reset_game()
+                    # Legacy button - classic one-hit death
+                    elif self.renderer.legacy_button.is_clicked(mouse_pos):
+                        self.game_mode = GAME_MODE_LEGACY
+                        self.in_game_mode_select = False
+                        self.reset_game()
+                    elif self.renderer.mode_back_button.is_clicked(mouse_pos):
+                        self.in_game_mode_select = False
+                        self.in_character_select = True
+                continue
+            
+            # Handle upgrade selection events (Survival mode)
+            if self.showing_upgrade_selection:
+                if event.type == pygame.KEYDOWN:
+                    if event.key in [pygame.K_1, pygame.K_2, pygame.K_3]:
+                        idx = event.key - pygame.K_1
+                        if idx < len(self.upgrade_options):
+                            self._apply_upgrade(idx)
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Check if clicking on upgrade cards
+                    card_width = 320
+                    card_height = 400
+                    card_spacing = 30
+                    total_width = 3 * card_width + 2 * card_spacing
+                    start_x = (SCREEN_WIDTH - total_width) // 2
+                    card_y = 180
+                    
+                    for i in range(3):
+                        card_x = start_x + i * (card_width + card_spacing)
+                        card_rect = pygame.Rect(card_x, card_y, card_width, card_height)
+                        if card_rect.collidepoint(mouse_pos):
+                            self._apply_upgrade(i)
+                            break
                 continue
             
             # Handle pause menu events
@@ -127,6 +187,7 @@ class Game:
                             self.in_main_menu = True
                             self.paused = False
                             self.show_pause_confirmation = False
+                            self.game_mode = None
                         elif self.renderer.no_button.is_clicked(mouse_pos):
                             self.show_pause_confirmation = False
                     else:
@@ -144,6 +205,7 @@ class Game:
                     elif self.renderer.game_over_quit_button.is_clicked(mouse_pos):
                         self.in_main_menu = True
                         self.game_over = False
+                        self.game_mode = None
                 continue
             
             # Handle in-game events
@@ -156,13 +218,36 @@ class Game:
                     self.input_handler._handle_w_skill(mouse_pos)
                 elif event.key == pygame.K_e:
                     self.input_handler._handle_e_skill(mouse_pos)
+                # Hidden debug key: L to instantly level up (for testing)
+                elif event.key == pygame.K_l:
+                    if self.game_mode == GAME_MODE_SURVIVAL and self.player_stats:
+                        # Force level up
+                        self.upgrade_options = Upgrade.generate_three_options()
+                        self.showing_upgrade_selection = True
             
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:  # Right click
                 self.input_handler._handle_right_click(event.pos)
     
+    def _apply_upgrade(self, index: int):
+        """Apply the selected upgrade and close the selection screen."""
+        if index < len(self.upgrade_options):
+            upgrade = self.upgrade_options[index]
+            self.player_stats.apply_upgrade(upgrade)
+            
+            # Update player speed if speed upgrade
+            self.player.speed = self.player_stats.get_speed()
+            
+            # Ensure input handler has latest stats
+            self.input_handler.apply_survival_stats(self.player_stats)
+        
+        self.showing_upgrade_selection = False
+        self.upgrade_options = []
+    
     def update(self, dt: float):
         """Update game state."""
-        if self.in_main_menu or self.in_character_select or self.game_over or self.paused:
+        # Don't update if in menu, paused, game over, or showing upgrades
+        if (self.in_main_menu or self.in_character_select or self.in_game_mode_select or 
+            self.game_over or self.paused or self.showing_upgrade_selection):
             return
         
         # Update survival time
@@ -182,12 +267,35 @@ class Game:
             self.enemy_manager.rogue_enemies
         )
         
+        # Handle XP for Survival mode
+        if self.game_mode == GAME_MODE_SURVIVAL and killed:
+            for _ in killed:
+                if self.player_stats.add_xp(XP_PER_KILL):
+                    # Level up! Show upgrade selection
+                    self.upgrade_options = Upgrade.generate_three_options()
+                    self.showing_upgrade_selection = True
+                    # Ensure input handler has latest stats
+                    self.input_handler.apply_survival_stats(self.player_stats)
+                    return  # Stop updating until upgrade is selected
+        
         # Check collision between enemy projectiles/spears and player
         if self.enemy_manager.check_collision(self.player.rect):
-            self.game_over = True
-            # Update best time
-            if self.survival_time > self.best_time:
-                self.best_time = self.survival_time
+            if self.game_mode == GAME_MODE_SURVIVAL:
+                # Survival mode - use hearts system
+                if self.player_stats.take_damage():
+                    # Player survives with hearts or extra life
+                    self.enemy_manager.clear_nearby_enemies(self.player.x, self.player.y, 100)
+                    self.input_handler.clear_all_projectiles()
+                else:
+                    # No hearts left - game over
+                    self.game_over = True
+                    if self.survival_time > self.best_time:
+                        self.best_time = self.survival_time
+            else:
+                # Legacy mode - instant death
+                self.game_over = True
+                if self.survival_time > self.best_time:
+                    self.best_time = self.survival_time
     
     def render(self):
         """Render the game."""
@@ -200,6 +308,11 @@ class Game:
         
         if self.in_character_select:
             self.renderer.draw_character_select(mouse_pos, self.selected_character)
+            self.renderer.present()
+            return
+        
+        if self.in_game_mode_select:
+            self.renderer.draw_game_mode_select(mouse_pos, self.selected_character)
             self.renderer.present()
             return
         
@@ -220,9 +333,17 @@ class Game:
         # Draw UI
         self.renderer.draw_ui(self.player, self.survival_time, character_type)
         
+        # Draw Survival mode UI (XP bar, hearts, stats)
+        if self.game_mode == GAME_MODE_SURVIVAL and self.player_stats:
+            self.renderer.draw_survival_ui(self.player_stats, self.player)
+        
+        # Draw upgrade selection screen if showing
+        if self.showing_upgrade_selection:
+            self.renderer.draw_upgrade_selection(mouse_pos, self.upgrade_options, self.player_stats)
         # Draw pause screen if paused
-        if self.paused:
-            self.renderer.draw_pause_screen(mouse_pos, self.show_pause_confirmation)
+        elif self.paused:
+            self.renderer.draw_pause_screen_with_stats(mouse_pos, self.show_pause_confirmation, 
+                                                        self.player_stats if self.game_mode == GAME_MODE_SURVIVAL else None)
         # Draw game over screen if needed
         elif self.game_over:
             self.renderer.draw_game_over(self.survival_time, self.best_time, mouse_pos)

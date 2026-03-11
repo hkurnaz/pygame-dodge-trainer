@@ -157,6 +157,30 @@ class Enemy:
                        (center_x - 6, center_y, 12, 8),
                        3.14, 0, 2)  # Frown
         
+        # Draw health bar if damaged (Survival mode)
+        if hasattr(self, "health") and self.health < 2.0:
+            bar_width = self.size
+            bar_height = 4
+            bar_x = center_x - bar_width // 2
+            bar_y = center_y - self.size // 2 - 8
+            
+            # Background
+            pygame.draw.rect(surface, (60, 60, 60), (bar_x, bar_y, bar_width, bar_height))
+            
+            # Health fill
+            health_ratio = max(0, self.health / 2.0)
+            fill_width = int(bar_width * health_ratio)
+            if fill_width > 0:
+                # Color based on health
+                if health_ratio > 0.5:
+                    health_color = (100, 255, 100)
+                else:
+                    health_color = (255, 165, 0)
+                pygame.draw.rect(surface, health_color, (bar_x, bar_y, fill_width, bar_height))
+            
+            # Border
+            pygame.draw.rect(surface, (100, 100, 100), (bar_x, bar_y, bar_width, bar_height), 1)
+        
         # Draw all projectiles
         for projectile in self.projectiles:
             projectile.draw(surface)
@@ -338,6 +362,21 @@ class SpearEnemy:
         pygame.draw.line(surface, (50, 30, 70),
                         (center_x - 5, center_y + 5),
                         (center_x + 5, center_y + 5), 2)
+        
+        # Draw health bar if damaged (Survival mode)
+        if hasattr(self, "health") and self.health < 2.0:
+            bar_width = self.size
+            bar_height = 4
+            bar_x = center_x - bar_width // 2
+            bar_y = center_y - self.size // 2 - 8
+            
+            pygame.draw.rect(surface, (60, 60, 60), (bar_x, bar_y, bar_width, bar_height))
+            health_ratio = max(0, self.health / 2.0)
+            fill_width = int(bar_width * health_ratio)
+            if fill_width > 0:
+                health_color = (100, 255, 100) if health_ratio > 0.5 else (255, 165, 0)
+                pygame.draw.rect(surface, health_color, (bar_x, bar_y, fill_width, bar_height))
+            pygame.draw.rect(surface, (100, 100, 100), (bar_x, bar_y, bar_width, bar_height), 1)
     
     def draw_spear(self, surface: pygame.Surface, player_x: float, player_y: float):
         """Draw the spear pointing towards player."""
@@ -558,6 +597,21 @@ class RogueEnemy:
         pygame.draw.arc(surface, (100, 100, 100),
                        (center_x - 5, center_y + 2, 10, 6),
                        3.14, 0, 1)
+        
+        # Draw health bar if damaged (Survival mode)
+        if hasattr(self, "health") and self.health < 2.0:
+            bar_width = self.size
+            bar_height = 4
+            bar_x = center_x - bar_width // 2
+            bar_y = center_y - self.size // 2 - 12
+            
+            pygame.draw.rect(surface, (60, 60, 60), (bar_x, bar_y, bar_width, bar_height))
+            health_ratio = max(0, self.health / 2.0)
+            fill_width = int(bar_width * health_ratio)
+            if fill_width > 0:
+                health_color = (100, 255, 100) if health_ratio > 0.5 else (255, 165, 0)
+                pygame.draw.rect(surface, health_color, (bar_x, bar_y, fill_width, bar_height))
+            pygame.draw.rect(surface, (100, 100, 100), (bar_x, bar_y, bar_width, bar_height), 1)
     
     def draw_knife(self, surface: pygame.Surface, player_x: float, player_y: float):
         """Draw the knife pointing towards player."""
