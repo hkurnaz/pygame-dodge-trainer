@@ -158,6 +158,8 @@ class Player:
         """Draw the player character based on type."""
         if character_type == "zed":
             self._draw_zed(surface)
+        elif character_type == "zilean":
+            self._draw_zilean(surface)
         else:
             self._draw_ezreal(surface)
     
@@ -340,4 +342,107 @@ class Player:
         pygame.draw.ellipse(surface, (40, 40, 45), 
                           (center_x - self.size // 3, foot_y - 5, self.size // 4, 10))
         pygame.draw.ellipse(surface, (40, 40, 45), 
+                          (center_x + self.size // 10, foot_y - 5, self.size // 4, 10))
+    
+    def _draw_zilean(self, surface: pygame.Surface):
+        """Draw Zilean style chronomancer."""
+        center_x = int(self.x)
+        center_y = int(self.y)
+        
+        # Draw shadow
+        shadow_surface = pygame.Surface((self.size + 10, self.size // 2), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow_surface, (0, 0, 0, 50), (0, 0, self.size + 10, self.size // 2))
+        surface.blit(shadow_surface, (center_x - (self.size + 10) // 2, center_y + self.size // 3))
+        
+        # Time magic glow (blue aura)
+        glow_surface = pygame.Surface((self.size + 40, self.size + 40), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surface, (100, 200, 255, 60), 
+                         (self.size // 2 + 20, self.size // 2 + 20), self.size // 2 + 15)
+        surface.blit(glow_surface, (center_x - self.size // 2 - 20, center_y - self.size // 2 - 20))
+        
+        # Draw clockwork robe (bronze color)
+        robe_color = (139, 90, 43)  # Bronze
+        robe_highlight = (180, 130, 80)
+        robe_outline = (100, 60, 30)
+        
+        # Main robe body
+        body_rect = pygame.Rect(
+            center_x - self.size // 2 + 3,
+            center_y - self.size // 4,
+            self.size - 6,
+            self.size // 2 + self.size // 4
+        )
+        pygame.draw.ellipse(surface, robe_color, body_rect)
+        pygame.draw.ellipse(surface, robe_outline, body_rect, 2)
+        
+        # Robe details - vertical line
+        pygame.draw.line(surface, robe_highlight,
+                        (center_x, center_y - self.size // 4),
+                        (center_x, center_y + self.size // 2), 2)
+        
+        # Clock symbol on chest
+        clock_y = center_y
+        pygame.draw.circle(surface, (80, 60, 40), (center_x, clock_y), 12)
+        pygame.draw.circle(surface, (150, 130, 100), (center_x, clock_y), 12, 2)
+        # Clock hands
+        pygame.draw.line(surface, (200, 180, 150), (center_x, clock_y), 
+                        (center_x, clock_y - 8), 2)
+        pygame.draw.line(surface, (200, 180, 150), (center_x, clock_y), 
+                        (center_x + 6, clock_y), 2)
+        
+        # Draw head
+        head_radius = self.size // 3
+        head_y = center_y - self.size // 3 - 5
+        
+        # Skin
+        pygame.draw.circle(surface, (220, 180, 140), (center_x, head_y), head_radius)
+        pygame.draw.circle(surface, (180, 140, 110), (center_x, head_y), head_radius, 2)
+        
+        # White hair/beard (Zilean's signature look)
+        hair_color = (240, 240, 245)
+        hair_outline = (200, 200, 210)
+        
+        # Hair on top
+        hair_top_points = [
+            (center_x - head_radius - 2, head_y + 5),
+            (center_x - head_radius + 5, head_y - 15),
+            (center_x, head_y - 22),
+            (center_x + head_radius - 5, head_y - 15),
+            (center_x + head_radius + 2, head_y + 5),
+        ]
+        pygame.draw.polygon(surface, hair_color, hair_top_points)
+        pygame.draw.polygon(surface, hair_outline, hair_top_points, 1)
+        
+        # Beard
+        beard_points = [
+            (center_x - head_radius + 3, head_y + 5),
+            (center_x - head_radius + 8, head_y + 20),
+            (center_x, head_y + 28),
+            (center_x + head_radius - 8, head_y + 20),
+            (center_x + head_radius - 3, head_y + 5),
+        ]
+        pygame.draw.polygon(surface, hair_color, beard_points)
+        pygame.draw.polygon(surface, hair_outline, beard_points, 1)
+        
+        # Eyes (wise old man look)
+        eye_offset = head_radius // 3
+        eye_y = head_y - 2
+        pygame.draw.circle(surface, (100, 80, 60), (center_x - eye_offset, eye_y), 3)
+        pygame.draw.circle(surface, (100, 80, 60), (center_x + eye_offset, eye_y), 3)
+        
+        # Floating clock hands around Zilean (time magic effect)
+        time_points = [
+            (center_x - self.size // 2 - 8, center_y - self.size // 3),
+            (center_x + self.size // 2 + 8, center_y - self.size // 3),
+            (center_x, center_y - self.size // 2 - 10),
+        ]
+        for i, (px, py) in enumerate(time_points):
+            pygame.draw.circle(surface, (150, 220, 255), (int(px), int(py)), 4)
+            pygame.draw.circle(surface, (200, 240, 255), (int(px), int(py)), 4, 1)
+        
+        # Draw feet (simple)
+        foot_y = center_y + self.size // 2
+        pygame.draw.ellipse(surface, (100, 60, 30), 
+                          (center_x - self.size // 3, foot_y - 5, self.size // 4, 10))
+        pygame.draw.ellipse(surface, (100, 60, 30), 
                           (center_x + self.size // 10, foot_y - 5, self.size // 4, 10))

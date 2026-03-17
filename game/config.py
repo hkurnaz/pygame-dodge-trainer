@@ -97,9 +97,20 @@ ZED_W_SHADOW_DURATION = 3.0  # seconds
 ZED_E_COOLDOWN = 4.0  # seconds
 ZED_E_RADIUS = 80  # Larger than spear length (50)
 
+# Zilean character settings
+ZILEAN_Q_COOLDOWN = 2.5  # seconds - bomb throw
+ZILEAN_Q_DELAY = 1.5  # seconds - bomb explosion delay
+ZILEAN_Q_RADIUS = 100  # explosion radius
+ZILEAN_Q_DAMAGE = 1  # damage per enemy in radius
+
+ZILEAN_E_COOLDOWN = 8.0  # seconds - time freeze
+ZILEAN_E_RADIUS = 150  # freeze radius
+ZILEAN_E_DURATION = 2.0  # seconds - freeze duration
+
 # Game mode settings
 GAME_MODE_LEGACY = "legacy"      # Classic survival - no upgrades, no hearts
 GAME_MODE_SURVIVAL = "survival"  # Has XP, upgrades, and 3 hearts
+GAME_MODE_STORY = "story"        # Story mode with stage-based challenges
 
 # XP and leveling settings (for Survival mode)
 XP_PER_KILL = 25

@@ -3,9 +3,10 @@
 import pygame
 import sys
 
-from game.config import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, GAME_MODE_LEGACY, GAME_MODE_SURVIVAL, XP_PER_KILL
-from game.entities import Player
+from game.config import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, GAME_MODE_LEGACY, GAME_MODE_SURVIVAL, GAME_MODE_STORY, XP_PER_KILL
+from game.entities import Player, BossOgre
 from game.systems import InputHandler, Renderer, EnemyManager, GameMap, Upgrade, PlayerStats
+from game.systems.story_mode import StoryMode
 
 
 class Game:
@@ -32,16 +33,27 @@ class Game:
         self.in_main_menu = True
         self.in_character_select = False
         self.in_game_mode_select = False
+        self.in_story_mode_map = False  # Story Mode roadmap screen
+        self.in_story_character_select = False  # Character selection for story mode
+        self.story_stage_pending = None  # Stage waiting to be started after char select
         self.paused = False
         self.show_pause_confirmation = False
         self.game_over = False
-        self.selected_character = 0  # 0 = Ezreal (only unlocked character)
+        self.selected_character = 0  # 0 = Ezreal, 1 = Zed, 2 = Zilean
         self.game_mode = None  # Will be set when mode is selected
         
         # Survival mode specific (has XP, hearts, upgrades)
         self.player_stats = None
         self.upgrade_options = []
         self.showing_upgrade_selection = False
+        
+        # Story Mode
+        self.story_mode = StoryMode()
+        self.story_kill_count = 0  # Kill count for current story stage
+        self.story_boss = None
+        self.story_success = False
+        self.story_failure = False
+        self.story_boss_hearts = 3  # Hearts for boss stages
         
         # Timer and score
         self.survival_time = 0.0
@@ -59,7 +71,12 @@ class Game:
         self.player.set_map(self.game_map)
         
         # Determine character type based on selection
-        character_type = "ezreal" if self.selected_character == 0 else "zed"
+        if self.selected_character == 0:
+            character_type = "ezreal"
+        elif self.selected_character == 1:
+            character_type = "zed"
+        else:
+            character_type = "zilean"
         
         # Create player stats for Survival mode (has XP, hearts, upgrades)
         if self.game_mode == GAME_MODE_SURVIVAL:
@@ -67,7 +84,7 @@ class Game:
             # Apply initial speed from stats
             self.player.speed = self.player_stats.get_speed()
         else:
-            # Legacy mode - no stats, one-hit death
+            # Legacy and Story modes - no stats, one-hit death
             self.player_stats = None
         
         # Create systems
@@ -83,6 +100,21 @@ class Game:
         self.show_pause_confirmation = False
         self.showing_upgrade_selection = False
         self.upgrade_options = []
+        
+        # Reset story mode
+        self.story_kill_count = 0
+        self.story_success = False
+        self.story_failure = False
+        self.story_boss = None
+        self.story_boss_hearts = 3  # Reset hearts for boss stages
+        
+        # Start the story stage if in story mode
+        if self.game_mode == GAME_MODE_STORY:
+            self.story_mode.start_stage()
+            stage = self.story_mode.get_current_stage()
+            if stage and stage.is_boss:
+                self.story_boss = BossOgre(SCREEN_WIDTH // 2, 180)
+                self.story_boss_hearts = 3
     
     def handle_events(self):
         """Process all pygame events."""
@@ -99,6 +131,10 @@ class Game:
                     if self.renderer.start_button.is_clicked(mouse_pos):
                         self.in_main_menu = False
                         self.in_character_select = True
+                    elif self.renderer.story_mode_button.is_clicked(mouse_pos):
+                        self.in_main_menu = False
+                        self.in_story_mode_map = True
+                        self.story_mode.reset_stage_progress()
                     elif self.renderer.quit_button.is_clicked(mouse_pos):
                         self.running = False
                 continue
@@ -117,12 +153,11 @@ class Game:
                         slot_x = start_x + i * (slot_width + slot_spacing)
                         slot_rect = pygame.Rect(slot_x, slot_y, slot_width, 400)
                         if slot_rect.collidepoint(mouse_pos):
-                            if i < 2:  # Only first two are selectable (Ezreal and Zed)
-                                self.selected_character = i
+                            self.selected_character = i
                     
                     if self.renderer.select_button.is_clicked(mouse_pos):
                         # Go to game mode selection
-                        if self.selected_character in [0, 1]:  # Ezreal or Zed
+                        if self.selected_character in [0, 1, 2]:
                             self.in_character_select = False
                             self.in_game_mode_select = True
                     elif self.renderer.back_button.is_clicked(mouse_pos):
@@ -146,6 +181,56 @@ class Game:
                     elif self.renderer.mode_back_button.is_clicked(mouse_pos):
                         self.in_game_mode_select = False
                         self.in_character_select = True
+                continue
+            
+            # Handle Story Mode map events
+            if self.in_story_mode_map:
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Check if clicking on a stage
+                    for i, stage in enumerate(self.story_mode.stages):
+                        if stage.is_hovered(mouse_pos) and stage.unlocked:
+                            # Go to character selection first
+                            self.story_stage_pending = i
+                            self.in_story_mode_map = False
+                            self.in_story_character_select = True
+                            break
+                    
+                    # Check back button
+                    if self.renderer.mode_back_button.is_clicked(mouse_pos):
+                        self.in_story_mode_map = False
+                        self.in_main_menu = True
+                
+                # Hidden K key - unlock all stages for testing
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_k:
+                    for stage in self.story_mode.stages:
+                        stage.unlocked = True
+                        stage.completed = False
+                continue
+            
+            # Handle Story Mode character selection
+            if self.in_story_character_select:
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Character selection buttons
+                    char_selected = False
+                    for i, button in enumerate(self.renderer.story_char_buttons):
+                        if button.is_clicked(mouse_pos):
+                            self.selected_character = i
+                            char_selected = True
+                            break
+                    
+                    if char_selected and self.story_stage_pending is not None:
+                        # Start the stage with selected character
+                        self.story_mode.set_stage(self.story_stage_pending)
+                        self.game_mode = GAME_MODE_STORY
+                        self.in_story_character_select = False
+                        self.reset_game()
+                        self.story_stage_pending = None
+                    
+                    # Back button
+                    if self.renderer.mode_back_button.is_clicked(mouse_pos):
+                        self.in_story_character_select = False
+                        self.in_story_mode_map = True
+                        self.story_stage_pending = None
                 continue
             
             # Handle upgrade selection events (Survival mode)
@@ -183,8 +268,13 @@ class Game:
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if self.show_pause_confirmation:
                         if self.renderer.yes_button.is_clicked(mouse_pos):
-                            # Return to main menu
-                            self.in_main_menu = True
+                            # Return to menu (story mode map or main menu)
+                            if self.game_mode == GAME_MODE_STORY:
+                                self.in_story_mode_map = True
+                                self.story_success = False
+                                self.story_failure = False
+                            else:
+                                self.in_main_menu = True
                             self.paused = False
                             self.show_pause_confirmation = False
                             self.game_mode = None
@@ -197,36 +287,73 @@ class Game:
                             self.show_pause_confirmation = True
                 continue
             
+            # Handle story result events
+            if self.game_mode == GAME_MODE_STORY and (self.story_success or self.story_failure):
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if self.story_success and self.renderer.story_continue_button.is_clicked(mouse_pos):
+                        self.story_success = False
+                        self.game_over = False
+                        self.in_story_mode_map = True
+                        self.game_mode = None
+                    elif self.story_failure and self.renderer.story_retry_button.is_clicked(mouse_pos):
+                        self.story_failure = False
+                        self.reset_game()
+                    elif self.renderer.story_back_button.is_clicked(mouse_pos):
+                        self.story_success = False
+                        self.story_failure = False
+                        self.game_over = False
+                        self.in_story_mode_map = True
+                        self.game_mode = None
+                continue
+            
             # Handle game over events
             if self.game_over:
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if self.renderer.retry_button.is_clicked(mouse_pos):
                         self.reset_game()
                     elif self.renderer.game_over_quit_button.is_clicked(mouse_pos):
-                        self.in_main_menu = True
-                        self.game_over = False
-                        self.game_mode = None
+                        if self.game_mode == GAME_MODE_STORY:
+                            # Return to story mode map
+                            self.in_story_mode_map = True
+                            self.game_over = False
+                            self.story_success = False
+                            self.story_failure = False
+                            self.game_mode = None
+                        else:
+                            self.in_main_menu = True
+                            self.game_over = False
+                            self.game_mode = None
                 continue
             
             # Handle in-game events
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.paused = True
-                elif event.key == pygame.K_q:
-                    self.input_handler._handle_q_skill(mouse_pos)
-                elif event.key == pygame.K_w:
-                    self.input_handler._handle_w_skill(mouse_pos)
-                elif event.key == pygame.K_e:
-                    self.input_handler._handle_e_skill(mouse_pos)
-                # Hidden debug key: L to instantly level up (for testing)
-                elif event.key == pygame.K_l:
-                    if self.game_mode == GAME_MODE_SURVIVAL and self.player_stats:
-                        # Force level up
-                        self.upgrade_options = Upgrade.generate_three_options()
-                        self.showing_upgrade_selection = True
+                elif self.story_boss and self.story_boss.escape_active:
+                    self.story_boss.handle_escape_input(event.key)
+                else:
+                    # Check if skills are locked (Stage 4)
+                    stage = self.story_mode.get_current_stage() if self.game_mode == GAME_MODE_STORY else None
+                    skills_locked = stage and stage.skills_locked
+                    
+                    if not skills_locked:
+                        if event.key == pygame.K_q:
+                            self.input_handler._handle_q_skill(mouse_pos)
+                        elif event.key == pygame.K_w:
+                            self.input_handler._handle_w_skill(mouse_pos)
+                        elif event.key == pygame.K_e:
+                            self.input_handler._handle_e_skill(mouse_pos)
+                    
+                    # Hidden debug key: L to instantly level up (for testing)
+                    if event.key == pygame.K_l:
+                        if self.game_mode == GAME_MODE_SURVIVAL and self.player_stats:
+                            # Force level up
+                            self.upgrade_options = Upgrade.generate_three_options()
+                            self.showing_upgrade_selection = True
             
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:  # Right click
-                self.input_handler._handle_right_click(event.pos)
+                if not (self.story_boss and self.story_boss.escape_active):
+                    self.input_handler._handle_right_click(event.pos)
     
     def _apply_upgrade(self, index: int):
         """Apply the selected upgrade and close the selection screen."""
@@ -247,25 +374,70 @@ class Game:
         """Update game state."""
         # Don't update if in menu, paused, game over, or showing upgrades
         if (self.in_main_menu or self.in_character_select or self.in_game_mode_select or 
-            self.game_over or self.paused or self.showing_upgrade_selection):
+            self.in_story_mode_map or self.game_over or self.paused or self.showing_upgrade_selection or
+            (self.game_mode == GAME_MODE_STORY and (self.story_success or self.story_failure))):
             return
         
         # Update survival time
         self.survival_time += dt
         
+        # Ensure core systems are initialized
+        if self.player is None or self.input_handler is None or self.enemy_manager is None:
+            return
+        
         # Update player
         self.player.update(dt)
-        self.input_handler.update(dt)
         
-        # Update enemies
-        self.enemy_manager.update(dt, self.player.x, self.player.y)
+        # Update enemies (skip for boss stage)
+        stage = self.story_mode.get_current_stage() if self.game_mode == GAME_MODE_STORY else None
+        if not (self.game_mode == GAME_MODE_STORY and stage and stage.is_boss):
+            self.enemy_manager.update(dt, self.player.x, self.player.y)
+        
+        # Update input handler (includes projectiles, bombs, freezes)
+        # This also handles bomb explosions and returns killed enemies
+        killed_from_bombs = self.input_handler.update(
+            dt,
+            self.enemy_manager.enemies,
+            self.enemy_manager.spear_enemies,
+            self.enemy_manager.rogue_enemies
+        )
+        
+        # Update frozen status on enemies
+        all_enemies = self.enemy_manager.enemies + self.enemy_manager.spear_enemies + self.enemy_manager.rogue_enemies
+        for enemy in all_enemies:
+            if enemy.active:
+                enemy.frozen = self.input_handler.is_enemy_frozen(enemy)
+        
+        # Update frozen status on boss (Zilean E)
+        if self.story_boss and self.story_boss.frozen:
+            # Keep frozen until timer ends (handled in boss update)
+            pass
         
         # Check projectile-enemy collisions
         killed = self.input_handler.check_projectile_enemy_collision(
             self.enemy_manager.enemies,
             self.enemy_manager.spear_enemies,
-            self.enemy_manager.rogue_enemies
+            self.enemy_manager.rogue_enemies,
+            self.story_boss
         )
+        
+        # Add bomb kills to projectile kills
+        killed.extend(killed_from_bombs)
+        
+        # Check bomb explosions against boss
+        if self.story_boss:
+            for bomb in self.input_handler.time_bombs:
+                if bomb.exploded and bomb.check_explosion_collision(self.story_boss):
+                    if not bomb.has_hit_enemy(id(self.story_boss)):
+                        bomb.mark_enemy_hit(id(self.story_boss))
+                        self.story_boss.take_damage(1)
+        
+        # Check time freeze against boss
+        if self.story_boss:
+            for freeze in self.input_handler.time_freezes:
+                if freeze.check_collision_with_enemy(self.story_boss):
+                    self.story_boss.frozen = True
+                    self.story_boss.frozen_timer = freeze.duration
         
         # Handle XP for Survival mode
         if self.game_mode == GAME_MODE_SURVIVAL and killed:
@@ -277,6 +449,62 @@ class Game:
                     # Ensure input handler has latest stats
                     self.input_handler.apply_survival_stats(self.player_stats)
                     return  # Stop updating until upgrade is selected
+        
+        # Handle Story Mode updates
+        if self.game_mode == GAME_MODE_STORY:
+            if stage and stage.is_boss and self.story_boss:
+                # Update boss
+                self.story_boss.update(dt, self.player, self.game_map)
+                
+                # Boss hits - use hearts system
+                if self.story_boss.player_hit:
+                    self.story_boss_hearts -= 1
+                    self.story_boss.player_hit = False  # Reset the hit flag
+                    if self.story_boss_hearts <= 0:
+                        self.story_failure = True
+                        self.game_over = True
+                        return
+                    else:
+                        # Brief invulnerability - push player back
+                        push_dx = self.player.x - self.story_boss.x
+                        push_dy = self.player.y - self.story_boss.y
+                        dist = (push_dx ** 2 + push_dy ** 2) ** 0.5
+                        if dist > 0:
+                            self.player.x += (push_dx / dist) * 80
+                            self.player.y += (push_dy / dist) * 80
+                
+                if self.story_boss.player_killed:
+                    self.story_failure = True
+                    self.game_over = True
+                    return
+                
+                # Boss defeated
+                if self.story_boss.is_defeated():
+                    stage.challenge.completed = True
+                    stage.complete()
+                    self.story_success = True
+                    self.game_over = True
+                    return
+                
+                # Update challenge timer (for display)
+                self.story_mode.update(dt, 0, 0)
+            else:
+                if killed:
+                    self.story_kill_count += len(killed)
+                # Update story mode challenge
+                self.story_mode.update(dt, self.story_kill_count, 0)
+                # Check if stage is complete
+                if self.story_mode.is_stage_complete():
+                    # Stage completed - success
+                    self.story_success = True
+                    self.game_over = True
+                    return
+                # Check if stage failed
+                if self.story_mode.is_stage_failed():
+                    # Stage failed
+                    self.story_failure = True
+                    self.game_over = True
+                    return
         
         # Check collision between enemy projectiles/spears and player
         if self.enemy_manager.check_collision(self.player.rect):
@@ -291,6 +519,11 @@ class Game:
                     self.game_over = True
                     if self.survival_time > self.best_time:
                         self.best_time = self.survival_time
+            elif self.game_mode == GAME_MODE_STORY:
+                # Story mode - instant death = stage failed
+                self.story_failure = True
+                self.game_over = True
+                return
             else:
                 # Legacy mode - instant death
                 self.game_over = True
@@ -316,6 +549,20 @@ class Game:
             self.renderer.present()
             return
         
+        if self.in_story_mode_map:
+            self.renderer.draw_story_mode_map(mouse_pos, self.story_mode)
+            self.renderer.present()
+            return
+        
+        if self.in_story_character_select:
+            self.renderer.draw_story_character_select(mouse_pos, self.selected_character, self.story_stage_pending, self.story_mode)
+            self.renderer.present()
+            return
+        
+        # Ensure game systems are initialized before rendering game
+        if self.player is None or self.input_handler is None or self.enemy_manager is None:
+            return
+        
         # Draw map first (background)
         self.renderer.draw_map(self.game_map)
         
@@ -323,11 +570,19 @@ class Game:
         self.renderer.draw_mouse_indicator(mouse_pos, self.player.position)
         
         # Determine character type
-        character_type = "ezreal" if self.selected_character == 0 else "zed"
+        if self.selected_character == 0:
+            character_type = "ezreal"
+        elif self.selected_character == 1:
+            character_type = "zed"
+        else:
+            character_type = "zilean"
         
         # Draw game objects
         self.renderer.draw_projectiles(self.input_handler)
-        self.renderer.draw_enemies(self.enemy_manager, self.player.x, self.player.y)
+        if self.story_boss:
+            self.story_boss.draw(self.screen)
+        else:
+            self.renderer.draw_enemies(self.enemy_manager, self.player.x, self.player.y)
         self.renderer.draw_player(self.player, character_type)
         
         # Draw UI
@@ -337,6 +592,17 @@ class Game:
         if self.game_mode == GAME_MODE_SURVIVAL and self.player_stats:
             self.renderer.draw_survival_ui(self.player_stats, self.player)
         
+        # Draw Story Mode challenge UI
+        if self.game_mode == GAME_MODE_STORY:
+            self.renderer.draw_story_challenge_ui(self.story_mode, self.story_boss, self.story_boss_hearts)
+            if self.story_boss:
+                self.story_boss.draw_health_bar(self.screen)
+                if self.story_boss.escape_active:
+                    prompt = self.story_boss.get_current_escape_prompt()
+                    self.renderer.draw_escape_prompt(prompt, self.story_boss.escape_index, self.story_boss.escape_success_required)
+                if self.story_boss.state == "bite":
+                    self.renderer.draw_bite_effect()
+        
         # Draw upgrade selection screen if showing
         if self.showing_upgrade_selection:
             self.renderer.draw_upgrade_selection(mouse_pos, self.upgrade_options, self.player_stats)
@@ -344,6 +610,11 @@ class Game:
         elif self.paused:
             self.renderer.draw_pause_screen_with_stats(mouse_pos, self.show_pause_confirmation, 
                                                         self.player_stats if self.game_mode == GAME_MODE_SURVIVAL else None)
+        # Draw story results if needed
+        elif self.game_mode == GAME_MODE_STORY and (self.story_success or self.story_failure):
+            stage = self.story_mode.get_current_stage()
+            stage_name = stage.name if stage else ""
+            self.renderer.draw_story_result(mouse_pos, self.story_success, stage_name)
         # Draw game over screen if needed
         elif self.game_over:
             self.renderer.draw_game_over(self.survival_time, self.best_time, mouse_pos)

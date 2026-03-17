@@ -8,9 +8,12 @@ from game.effects.teleport_trail import TeleportTrail
 from game.effects.death_effect import DeathEffect
 from game.effects.shadow import Shadow
 from game.effects.spin_attack import SpinAttack
+from game.effects.time_bomb import TimeBomb, ExplosionEffect
+from game.effects.time_freeze import TimeFreeze, FrozenEffect
 from game.config import (
     TELEPORT_DISTANCE, TELEPORT_COOLDOWN, Q_SKILL_COOLDOWN,
-    ZED_Q_COOLDOWN, ZED_W_COOLDOWN, ZED_E_COOLDOWN, ZED_W_SHADOW_DISTANCE
+    ZED_Q_COOLDOWN, ZED_W_COOLDOWN, ZED_E_COOLDOWN, ZED_W_SHADOW_DISTANCE,
+    ZILEAN_Q_COOLDOWN, ZILEAN_E_COOLDOWN
 )
 
 
@@ -29,6 +32,12 @@ class InputHandler:
         self.shadow = None
         self.spin_attacks: list = []
         self.shurikens: list = []
+        
+        # Zilean-specific
+        self.time_bombs: list = []
+        self.explosion_effects: list = []
+        self.time_freezes: list = []
+        self.frozen_effects: dict = {}  # enemy_id -> FrozenEffect
     
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle pygame events. Returns True if quit."""
@@ -57,6 +66,8 @@ class InputHandler:
         """Handle Q skill based on character type."""
         if self.character_type == "zed":
             self._handle_zed_q(mouse_pos)
+        elif self.character_type == "zilean":
+            self._handle_zilean_q(mouse_pos)
         else:
             self._handle_ezreal_q(mouse_pos)
     
@@ -187,6 +198,8 @@ class InputHandler:
         """Handle E skill based on character type."""
         if self.character_type == "zed":
             self._handle_zed_e()
+        elif self.character_type == "zilean":
+            self._handle_zilean_e(mouse_pos)
         else:
             self._handle_ezreal_e(mouse_pos)
     
@@ -236,7 +249,39 @@ class InputHandler:
             # Shadow also casts E at its position
             self._cast_shadow_e()
     
-    def check_projectile_enemy_collision(self, enemies: list, spear_enemies: list, rogue_enemies: list) -> list:
+    def _handle_zilean_q(self, mouse_pos: tuple):
+        """Handle Zilean's Q skill - throw time bomb."""
+        if self.player.q_cooldown <= 0:
+            bomb = TimeBomb(
+                self.player.x,
+                self.player.y,
+                mouse_pos[0],
+                mouse_pos[1]
+            )
+            self.time_bombs.append(bomb)
+            
+            # Apply cooldown
+            if self.player_stats:
+                self.player.q_cooldown = self.player_stats.get_q_cooldown()
+            else:
+                self.player.q_cooldown = ZILEAN_Q_COOLDOWN
+    
+    def _handle_zilean_e(self, mouse_pos: tuple):
+        """Handle Zilean's E skill - time freeze."""
+        if self.player.e_cooldown <= 0:
+            freeze = TimeFreeze(
+                mouse_pos[0],
+                mouse_pos[1]
+            )
+            self.time_freezes.append(freeze)
+            
+            # Apply cooldown
+            if self.player_stats:
+                self.player.e_cooldown = self.player_stats.get_e_cooldown()
+            else:
+                self.player.e_cooldown = ZILEAN_E_COOLDOWN
+    
+    def check_projectile_enemy_collision(self, enemies: list, spear_enemies: list, rogue_enemies: list, boss=None) -> list:
         """Check if any projectile hits an enemy. Returns list of killed enemies."""
         killed = []
         
@@ -276,6 +321,12 @@ class InputHandler:
                             killed.append(enemy)
                         projectile.active = False
                         break
+            
+            # Check boss
+            if projectile.active and boss:
+                if projectile.check_collision_with_enemy(boss):
+                    boss.take_damage(self._get_damage_amount())
+                    projectile.active = False
         
         # Check shurikens (Zed)
         for shuriken in self.shurikens:
@@ -313,14 +364,17 @@ class InputHandler:
                             killed.append(enemy)
                         shuriken.active = False
                         break
+            
+            # Check boss
+            if shuriken.active and boss:
+                if shuriken.check_collision_with_enemy(boss):
+                    boss.take_damage(self._get_damage_amount())
+                    shuriken.active = False
         
         # Check spin attacks (Zed's E)
         for spin in self.spin_attacks:
             if not spin.active:
                 continue
-            
-            # Get enemy id for tracking
-            enemy_id = 0
             
             # Check shooting enemies
             for enemy in enemies:
@@ -351,8 +405,20 @@ class InputHandler:
                             self.effects.append(DeathEffect(enemy.x, enemy.y))
                             killed.append(enemy)
                         spin.mark_enemy_hit(id(enemy))
+            
+            # Check boss
+            if boss and spin.check_collision_with_enemy(boss):
+                if not spin.has_hit_enemy(id(boss)):
+                    boss.take_damage(self._get_damage_amount())
+                    spin.mark_enemy_hit(id(boss))
         
         return killed
+    
+    def _get_damage_amount(self) -> float:
+        """Get current player damage amount."""
+        if self.player_stats:
+            return self.player_stats.damage_multiplier
+        return 1.0
     
     def _apply_damage(self, enemy) -> bool:
         """Apply damage to enemy. Returns True if enemy should be killed."""
@@ -373,7 +439,7 @@ class InputHandler:
         """Update Survival mode stats reference."""
         self.player_stats = player_stats
     
-    def update(self, dt: float):
+    def update(self, dt: float, enemies: list = None, spear_enemies: list = None, rogue_enemies: list = None):
         """Update all projectiles and effects."""
         # Update projectiles
         for projectile in self.projectiles:
@@ -396,6 +462,80 @@ class InputHandler:
         # Remove inactive spin attacks
         self.spin_attacks = [s for s in self.spin_attacks if s.active]
         
+        # Update time bombs
+        for bomb in self.time_bombs:
+            bomb.update(dt)
+        
+        # Check bomb explosions
+        killed = []
+        for bomb in self.time_bombs:
+            if bomb.exploded:
+                # Create explosion effect
+                self.explosion_effects.append(ExplosionEffect(bomb.x, bomb.y, bomb.radius))
+                # Check collision with all enemy types
+                all_enemies = []
+                if enemies:
+                    all_enemies.extend(enemies)
+                if spear_enemies:
+                    all_enemies.extend(spear_enemies)
+                if rogue_enemies:
+                    all_enemies.extend(rogue_enemies)
+                
+                for enemy in all_enemies:
+                    if enemy.active and bomb.check_explosion_collision(enemy):
+                        if not bomb.has_hit_enemy(id(enemy)):
+                            bomb.mark_enemy_hit(id(enemy))
+                            if self._apply_damage(enemy):
+                                enemy.active = False
+                                self.effects.append(DeathEffect(enemy.x, enemy.y))
+                                killed.append(enemy)
+        
+        # Remove exploded bombs
+        self.time_bombs = [b for b in self.time_bombs if b.active]
+        
+        # Update explosion effects
+        for effect in self.explosion_effects:
+            effect.update(dt)
+        self.explosion_effects = [e for e in self.explosion_effects if e.active]
+        
+        # Update time freezes
+        for freeze in self.time_freezes:
+            freeze.update(dt)
+            # Check and freeze enemies
+            if enemies:
+                for enemy in enemies:
+                    if enemy.active and freeze.check_collision_with_enemy(enemy):
+                        freeze.freeze_enemy(id(enemy))
+                        if id(enemy) not in self.frozen_effects:
+                            self.frozen_effects[id(enemy)] = FrozenEffect(enemy)
+            if spear_enemies:
+                for enemy in spear_enemies:
+                    if enemy.active and freeze.check_collision_with_enemy(enemy):
+                        freeze.freeze_enemy(id(enemy))
+                        if id(enemy) not in self.frozen_effects:
+                            self.frozen_effects[id(enemy)] = FrozenEffect(enemy)
+            if rogue_enemies:
+                for enemy in rogue_enemies:
+                    if enemy.active and freeze.check_collision_with_enemy(enemy):
+                        freeze.freeze_enemy(id(enemy))
+                        if id(enemy) not in self.frozen_effects:
+                            self.frozen_effects[id(enemy)] = FrozenEffect(enemy)
+        
+        # Remove inactive time freezes
+        self.time_freezes = [f for f in self.time_freezes if f.active]
+        
+        # Update frozen effects
+        for enemy_id, effect in list(self.frozen_effects.items()):
+            effect.update(dt)
+            # Remove if freeze expired
+            still_frozen = False
+            for freeze in self.time_freezes:
+                if freeze.is_enemy_frozen(enemy_id):
+                    still_frozen = True
+                    break
+            if not still_frozen:
+                del self.frozen_effects[enemy_id]
+        
         # Update effects
         for effect in self.effects:
             effect.update(dt)
@@ -406,17 +546,38 @@ class InputHandler:
         # Update shadow reference if it became inactive
         if self.shadow and not self.shadow.active:
             self.shadow = None
+        
+        return killed
+    
+    def is_enemy_frozen(self, enemy) -> bool:
+        """Check if an enemy is currently frozen."""
+        enemy_id = id(enemy)
+        for freeze in self.time_freezes:
+            if freeze.is_enemy_frozen(enemy_id):
+                return True
+        return False
     
     def clear_all_projectiles(self):
         """Clear all player projectiles (for extra life effect)."""
         self.projectiles.clear()
         self.shurikens.clear()
         self.spin_attacks.clear()
+        self.time_bombs.clear()
+        self.time_freezes.clear()
+        self.frozen_effects.clear()
     
     def draw(self, surface: pygame.Surface):
         """Draw all projectiles and effects."""
         # Draw effects first (behind everything)
         for effect in self.effects:
+            effect.draw(surface)
+        
+        # Draw time freezes (behind enemies)
+        for freeze in self.time_freezes:
+            freeze.draw(surface)
+        
+        # Draw frozen effects on enemies
+        for effect in self.frozen_effects.values():
             effect.draw(surface)
         
         # Draw projectiles
@@ -430,3 +591,11 @@ class InputHandler:
         # Draw spin attacks
         for spin in self.spin_attacks:
             spin.draw(surface)
+        
+        # Draw time bombs
+        for bomb in self.time_bombs:
+            bomb.draw(surface)
+        
+        # Draw explosion effects
+        for effect in self.explosion_effects:
+            effect.draw(surface)

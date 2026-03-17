@@ -96,16 +96,19 @@ class EnemyManager:
         
         # Update shooting enemies and collect new projectiles
         for enemy in self.enemies:
-            new_projectiles = enemy.update(dt, player_x, player_y)
-            self.enemy_projectiles.extend(new_projectiles)
+            if not getattr(enemy, 'frozen', False):
+                new_projectiles = enemy.update(dt, player_x, player_y)
+                self.enemy_projectiles.extend(new_projectiles)
         
         # Update spear enemies (follow player)
         for spear_enemy in self.spear_enemies:
-            spear_enemy.update(dt, player_x, player_y)
+            if not getattr(spear_enemy, 'frozen', False):
+                spear_enemy.update(dt, player_x, player_y)
         
         # Update rogue enemies (follow player fast)
         for rogue_enemy in self.rogue_enemies:
-            rogue_enemy.update(dt, player_x, player_y)
+            if not getattr(rogue_enemy, 'frozen', False):
+                rogue_enemy.update(dt, player_x, player_y)
         
         # Update all enemy projectiles
         for projectile in self.enemy_projectiles:

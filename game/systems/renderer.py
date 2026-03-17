@@ -51,11 +51,15 @@ class Renderer:
         
         # Main menu buttons
         self.start_button = Button(
-            SCREEN_WIDTH // 2, 650, 200, 50,
+            SCREEN_WIDTH // 2, 600, 200, 50,
             "START", (40, 100, 40), (60, 150, 60)
         )
+        self.story_mode_button = Button(
+            SCREEN_WIDTH // 2, 665, 200, 50,
+            "STORY MODE", (80, 60, 120), (110, 80, 160)
+        )
         self.quit_button = Button(
-            SCREEN_WIDTH // 2, 720, 200, 50,
+            SCREEN_WIDTH // 2, 730, 200, 50,
             "QUIT", (100, 40, 40), (150, 60, 60)
         )
         
@@ -99,6 +103,20 @@ class Renderer:
             "QUIT", (100, 40, 40), (150, 60, 60)
         )
         
+        # Story result buttons
+        self.story_continue_button = Button(
+            SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 70, 220, 50,
+            "CONTINUE", (40, 100, 40), (60, 150, 60)
+        )
+        self.story_retry_button = Button(
+            SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 70, 220, 50,
+            "RETRY", (40, 100, 40), (60, 150, 60)
+        )
+        self.story_back_button = Button(
+            SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 130, 220, 50,
+            "BACK TO MAP", (80, 80, 80), (120, 120, 120)
+        )
+        
         # Game mode selection buttons
         self.legacy_button = Button(
             SCREEN_WIDTH // 2, 450, 280, 60,
@@ -112,6 +130,13 @@ class Renderer:
             SCREEN_WIDTH // 2, 620, 200, 50,
             "BACK", (80, 80, 80), (120, 120, 120)
         )
+        
+        # Story mode character selection buttons
+        self.story_char_buttons = [
+            Button(SCREEN_WIDTH // 2 - 250, 400, 160, 180, "EZREAL", (60, 100, 150), (80, 130, 180)),
+            Button(SCREEN_WIDTH // 2, 400, 160, 180, "ZED", (80, 60, 100), (110, 80, 130)),
+            Button(SCREEN_WIDTH // 2 + 250, 400, 160, 180, "ZILEAN", (100, 80, 60), (130, 110, 90)),
+        ]
     
     def clear(self):
         """Clear the screen with background color."""
@@ -157,8 +182,9 @@ class Renderer:
         pygame.draw.rect(self.screen, (80, 90, 110), bg_rect, 2, border_radius=5)
         self.screen.blit(timer_surface, timer_rect)
         
-        # Draw skill cooldowns on left side
-        y_offset = 60
+        # Draw skill cooldowns - positioned below challenge UI in story mode
+        # or at default position in other modes
+        y_offset = 85  # Below challenge UI (challenge UI is at y=10 with height ~70)
         
         # Q skill cooldown
         if player.q_cooldown > 0:
@@ -169,7 +195,7 @@ class Renderer:
         self.screen.blit(text_surface, (10, y_offset))
         
         # W skill cooldown (Zed only)
-        y_offset += 25
+        y_offset += 22
         if character_type == "zed":
             if player.w_cooldown > 0:
                 cd_text = f"W: {player.w_cooldown:.1f}s"
@@ -177,33 +203,48 @@ class Renderer:
             else:
                 text_surface = self.font.render("W: Ready", True, (150, 100, 255))
             self.screen.blit(text_surface, (10, y_offset))
+        elif character_type == "zilean":
+            # Zilean has no W skill
+            pass
         
         # E skill cooldown
-        y_offset += 25
+        y_offset += 22
         if character_type == "zed":
             if player.e_cooldown > 0:
                 cd_text = f"E: {player.e_cooldown:.1f}s"
                 text_surface = self.font.render(cd_text, True, GRAY)
             else:
                 text_surface = self.font.render("E: Ready", True, (255, 100, 100))
+            self.screen.blit(text_surface, (10, y_offset))
+        elif character_type == "zilean":
+            if player.e_cooldown > 0:
+                cd_text = f"E: {player.e_cooldown:.1f}s"
+                text_surface = self.font.render(cd_text, True, GRAY)
+            else:
+                text_surface = self.font.render("E: Ready", True, (100, 200, 255))
+            self.screen.blit(text_surface, (10, y_offset))
         else:
             if player.teleport_cooldown > 0:
                 cd_text = f"E Teleport: {player.teleport_cooldown:.1f}s"
                 text_surface = self.font.render(cd_text, True, GRAY)
             else:
                 text_surface = self.font.render("E Teleport: Ready", True, WHITE)
-        self.screen.blit(text_surface, (10, y_offset))
+            self.screen.blit(text_surface, (10, y_offset))
         
         # Draw controls info at bottom
         controls = [
             "Right-Click: Move",
-            "Q: Attack",
         ]
         
         if character_type == "zed":
+            controls.append("Q: Shuriken")
             controls.append("W: Living Shadow")
             controls.append("E: Spin Attack")
+        elif character_type == "zilean":
+            controls.append("Q: Time Bomb")
+            controls.append("E: Time Freeze")
         else:
+            controls.append("Q: Mystic Shot")
             controls.append("E: Teleport")
         
         for i, control in enumerate(controls):
@@ -264,7 +305,7 @@ class Renderer:
         pygame.draw.polygon(self.screen, YELLOW, hair_points)
         
         # Instructions box
-        instructions_box = pygame.Rect(SCREEN_WIDTH // 2 - 250, 400, 500, 200)
+        instructions_box = pygame.Rect(SCREEN_WIDTH // 2 - 250, 360, 500, 180)
         pygame.draw.rect(self.screen, (35, 40, 55), instructions_box, border_radius=10)
         pygame.draw.rect(self.screen, (80, 90, 110), instructions_box, 2, border_radius=10)
         
@@ -279,20 +320,22 @@ class Renderer:
             "Avoid projectiles, spears, and knives!"
         ]
         
-        y_start = 420
+        y_start = 380
         for i, line in enumerate(instructions):
             if i == 0:
                 text_surface = self.subtitle_font.render(line, True, YELLOW)
             else:
                 text_surface = self.font.render(line, True, WHITE)
-            text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, y_start + i * 25))
+            text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, y_start + i * 23))
             self.screen.blit(text_surface, text_rect)
         
         # Update and draw buttons
         self.start_button.update(mouse_pos)
+        self.story_mode_button.update(mouse_pos)
         self.quit_button.update(mouse_pos)
         
         self.start_button.draw(self.screen, self.button_font)
+        self.story_mode_button.draw(self.screen, self.button_font)
         self.quit_button.draw(self.screen, self.button_font)
     
     def draw_character_select(self, mouse_pos: tuple, selected_character: int = 0):
@@ -326,7 +369,7 @@ class Renderer:
         characters = [
             {"name": "Ezreal", "unlocked": True, "type": "ezreal"},
             {"name": "Zed", "unlocked": True, "type": "zed"},
-            {"name": "Coming Soon", "unlocked": False, "type": "locked"}
+            {"name": "Zilean", "unlocked": True, "type": "zilean"}
         ]
         
         for i, char in enumerate(characters):
@@ -353,6 +396,8 @@ class Renderer:
                     self._draw_ezreal_preview(preview_x, preview_y)
                 elif char["type"] == "zed":
                     self._draw_zed_preview(preview_x, preview_y)
+                elif char["type"] == "zilean":
+                    self._draw_zilean_preview(preview_x, preview_y)
                 
                 # Character name
                 name_text = self.subtitle_font.render(char["name"], True, YELLOW)
@@ -514,6 +559,65 @@ class Renderer:
         pygame.draw.circle(glow_surface, (150, 0, 0, 60), (15, 15), 12)
         self.screen.blit(glow_surface, (blade_x - 5, blade_y - 15))
     
+    def _draw_zilean_preview(self, x: int, y: int):
+        """Draw Zilean character preview at the given position."""
+        # Body color - bronze/clockwork colors
+        body_color = (139, 90, 43)  # Bronze
+        body_outline = (100, 60, 30)
+        
+        # Draw clockwork robe
+        robe_rect = pygame.Rect(x - 30, y - 15, 60, 80)
+        pygame.draw.ellipse(self.screen, body_color, robe_rect)
+        pygame.draw.ellipse(self.screen, body_outline, robe_rect, 2)
+        
+        # Draw head
+        head_y = y - 50
+        pygame.draw.circle(self.screen, (220, 180, 140), (x, head_y), 25)  # Skin
+        pygame.draw.circle(self.screen, body_outline, (x, head_y), 25, 2)
+        
+        # Draw white beard/hair (Zilean's signature)
+        beard_points = [
+            (x - 20, head_y + 10),
+            (x - 15, head_y + 30),
+            (x, head_y + 35),
+            (x + 15, head_y + 30),
+            (x + 20, head_y + 10),
+        ]
+        pygame.draw.polygon(self.screen, (240, 240, 245), beard_points)
+        pygame.draw.polygon(self.screen, (200, 200, 210), beard_points, 1)
+        
+        # Hair on top
+        hair_points = [
+            (x - 22, head_y - 5),
+            (x - 15, head_y - 25),
+            (x, head_y - 30),
+            (x + 15, head_y - 25),
+            (x + 22, head_y - 5),
+        ]
+        pygame.draw.polygon(self.screen, (240, 240, 245), hair_points)
+        pygame.draw.polygon(self.screen, (200, 200, 210), hair_points, 1)
+        
+        # Draw clock symbol on chest
+        clock_y = y + 10
+        pygame.draw.circle(self.screen, (80, 60, 40), (x, clock_y), 15)
+        pygame.draw.circle(self.screen, (150, 130, 100), (x, clock_y), 15, 2)
+        # Clock hands
+        pygame.draw.line(self.screen, (200, 180, 150), (x, clock_y), (x, clock_y - 10), 2)
+        pygame.draw.line(self.screen, (200, 180, 150), (x, clock_y), (x + 8, clock_y), 2)
+        
+        # Draw time magic glow (blue)
+        glow_surface = pygame.Surface((80, 80), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surface, (100, 200, 255, 80), (40, 40), 35)
+        self.screen.blit(glow_surface, (x - 40, y - 40))
+        
+        # Draw floating clock hands around him
+        for i in range(3):
+            angle = i * 120
+            hand_dist = 45
+            hand_x = x + int(15 * 1.5 * (1 if i == 0 else -0.5 if i == 1 else -0.5))
+            hand_y = y - 30 + int(15 * (0 if i == 0 else 0.87 if i == 1 else -0.87))
+            pygame.draw.circle(self.screen, (150, 220, 255), (hand_x, hand_y), 4)
+    
     def draw_game_over(self, survival_time: float, best_time: float, mouse_pos: tuple):
         """Draw game over screen with interactive buttons."""
         # Semi-transparent overlay
@@ -561,6 +665,46 @@ class Renderer:
         
         self.retry_button.draw(self.screen, self.button_font)
         self.game_over_quit_button.draw(self.screen, self.button_font)
+    
+    def draw_story_result(self, mouse_pos: tuple, success: bool, stage_name: str):
+        """Draw story mode result screen (success or failure)."""
+        # Semi-transparent overlay
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        self.screen.blit(overlay, (0, 0))
+        
+        if success:
+            title_text = self.title_font.render("LEVEL SUCCESS", True, GREEN)
+            subtitle_text = self.subtitle_font.render(stage_name, True, WHITE)
+            box_color = GREEN
+        else:
+            title_text = self.title_font.render("CHALLENGE FAILED", True, RED)
+            subtitle_text = self.subtitle_font.render(stage_name, True, WHITE)
+            box_color = RED
+        
+        title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 120))
+        self.screen.blit(title_text, title_rect)
+        
+        # Draw a box around the title
+        box_rect = title_rect.inflate(40, 20)
+        pygame.draw.rect(self.screen, box_color, box_rect, 3, border_radius=10)
+        
+        subtitle_rect = subtitle_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 70))
+        self.screen.blit(subtitle_text, subtitle_rect)
+        
+        # Update and draw buttons
+        if success:
+            self.story_continue_button.update(mouse_pos)
+            self.story_back_button.update(mouse_pos)
+            
+            self.story_continue_button.draw(self.screen, self.button_font)
+            self.story_back_button.draw(self.screen, self.button_font)
+        else:
+            self.story_retry_button.update(mouse_pos)
+            self.story_back_button.update(mouse_pos)
+            
+            self.story_retry_button.draw(self.screen, self.button_font)
+            self.story_back_button.draw(self.screen, self.button_font)
     
     def draw_pause_screen(self, mouse_pos: tuple, show_confirmation: bool = False):
         """Draw pause screen with resume and menu buttons."""
@@ -1160,3 +1304,397 @@ class Renderer:
     def present(self):
         """Flip the display buffer."""
         pygame.display.flip()
+    
+    def draw_story_mode_map(self, mouse_pos: tuple, story_mode):
+        """Draw the Story Mode roadmap screen."""
+        # Fill with dark background
+        self.screen.fill((20, 25, 35))
+        
+        # Draw decorative lines
+        for i in range(0, SCREEN_HEIGHT, 40):
+            pygame.draw.line(self.screen, (30, 35, 45), (0, i), (SCREEN_WIDTH, i))
+        
+        # Title
+        title_text = self.title_font.render("STORY MODE", True, YELLOW)
+        title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, 60))
+        
+        # Draw title box
+        title_box = title_rect.inflate(40, 20)
+        pygame.draw.rect(self.screen, (40, 50, 70), title_box, border_radius=10)
+        pygame.draw.rect(self.screen, YELLOW, title_box, 3, border_radius=10)
+        self.screen.blit(title_text, title_rect)
+        
+        # Subtitle
+        subtitle_text = self.subtitle_font.render("Select a Stage", True, WHITE)
+        subtitle_rect = subtitle_text.get_rect(center=(SCREEN_WIDTH // 2, 110))
+        self.screen.blit(subtitle_text, subtitle_rect)
+        
+        # Draw the path connecting stages
+        if len(story_mode.stages) > 1:
+            path_points = [(stage.x, stage.y) for stage in story_mode.stages]
+            # Draw path line
+            for i in range(len(path_points) - 1):
+                # Draw path segment
+                color = (100, 150, 100) if story_mode.stages[i].completed else (60, 60, 70)
+                pygame.draw.line(self.screen, color, path_points[i], path_points[i + 1], 6)
+                # Draw path glow for completed segments
+                if story_mode.stages[i].completed:
+                    pygame.draw.line(self.screen, (150, 200, 150), path_points[i], path_points[i + 1], 2)
+        
+        # Draw stages
+        hovered_stage = None
+        for stage in story_mode.stages:
+            # Determine stage appearance
+            if stage.completed:
+                # Completed stage - green/gold glow
+                outer_color = (100, 200, 100)
+                inner_color = (60, 120, 60)
+                glow_color = (150, 255, 150)
+                border_color = (200, 255, 200)
+                text_color = GREEN
+                checkmark = True
+            elif stage.unlocked:
+                # Unlocked but not completed - blue glow
+                outer_color = (80, 100, 150)
+                inner_color = (50, 70, 100)
+                glow_color = (100, 150, 255)
+                border_color = (150, 180, 255)
+                text_color = WHITE
+                checkmark = False
+            else:
+                # Locked stage - gray
+                outer_color = (60, 60, 60)
+                inner_color = (40, 40, 40)
+                glow_color = None
+                border_color = (80, 80, 80)
+                text_color = GRAY
+                checkmark = False
+            
+            # Check hover
+            is_hovered = stage.is_hovered(mouse_pos) and stage.unlocked
+            if is_hovered:
+                hovered_stage = stage
+                outer_color = tuple(min(255, c + 40) for c in outer_color)
+                inner_color = tuple(min(255, c + 30) for c in inner_color)
+            
+            # Draw glow effect for completed/unlocked stages
+            if stage.completed or stage.unlocked:
+                glow_surface = pygame.Surface((stage.radius * 4, stage.radius * 4), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surface, (*glow_color, 80 if is_hovered else 50), 
+                                 (stage.radius * 2, stage.radius * 2), stage.radius * 2)
+                self.screen.blit(glow_surface, (stage.x - stage.radius * 2, stage.y - stage.radius * 2))
+            
+            # Draw outer circle
+            pygame.draw.circle(self.screen, outer_color, (stage.x, stage.y), stage.radius)
+            # Draw inner circle
+            pygame.draw.circle(self.screen, inner_color, (stage.x, stage.y), stage.radius - 5)
+            # Draw border
+            pygame.draw.circle(self.screen, border_color, (stage.x, stage.y), stage.radius, 3)
+            
+            # Draw stage number
+            number_text = self.subtitle_font.render(str(stage.stage_id), True, text_color)
+            number_rect = number_text.get_rect(center=(stage.x, stage.y))
+            self.screen.blit(number_text, number_rect)
+            
+            # Draw checkmark for completed stages
+            if checkmark:
+                check_text = self.menu_font.render("✓", True, GREEN)
+                check_rect = check_text.get_rect(center=(stage.x + 20, stage.y - 20))
+                self.screen.blit(check_text, check_rect)
+            
+            # Boss crown indicator
+            if stage.is_boss:
+                boss_text = self.menu_font.render("👑", True, (200, 140, 255))
+                boss_rect = boss_text.get_rect(center=(stage.x - 20, stage.y - 20))
+                self.screen.blit(boss_text, boss_rect)
+            
+            # Draw lock icon for locked stages
+            if not stage.unlocked:
+                lock_text = self.menu_font.render("🔒", True, GRAY)
+                lock_rect = lock_text.get_rect(center=(stage.x, stage.y + 25))
+                self.screen.blit(lock_text, lock_rect)
+        
+        # Draw tooltip for hovered stage
+        if hovered_stage:
+            tooltip_x = hovered_stage.x
+            tooltip_y = hovered_stage.y + hovered_stage.radius + 20
+            
+            # Prepare tooltip text
+            tooltip_lines = [
+                hovered_stage.name,
+                hovered_stage.challenge.description
+            ]
+            
+            # Calculate tooltip size
+            line_surfaces = [self.font.render(line, True, WHITE) for line in tooltip_lines]
+            max_width = max(s.get_width() for s in line_surfaces) + 20
+            total_height = sum(s.get_height() for s in line_surfaces) + 20
+            
+            # Draw tooltip background
+            tooltip_rect = pygame.Rect(
+                tooltip_x - max_width // 2,
+                tooltip_y,
+                max_width,
+                total_height
+            )
+            # Keep tooltip on screen
+            if tooltip_rect.right > SCREEN_WIDTH:
+                tooltip_rect.right = SCREEN_WIDTH - 10
+            if tooltip_rect.left < 0:
+                tooltip_rect.left = 10
+            
+            pygame.draw.rect(self.screen, (30, 35, 50), tooltip_rect, border_radius=8)
+            pygame.draw.rect(self.screen, (100, 120, 150), tooltip_rect, 2, border_radius=8)
+            
+            # Draw tooltip text
+            y_offset = tooltip_rect.top + 10
+            for i, surface in enumerate(line_surfaces):
+                text_rect = surface.get_rect(centerx=tooltip_rect.centerx, top=y_offset)
+                self.screen.blit(surface, text_rect)
+                y_offset += surface.get_height() + 5
+        
+        # Draw progress info
+        completed_count = story_mode.get_completed_stages_count()
+        total_count = len(story_mode.stages)
+        progress_text = self.font.render(f"Progress: {completed_count}/{total_count} stages completed", True, WHITE)
+        self.screen.blit(progress_text, (20, SCREEN_HEIGHT - 40))
+        
+        # Draw back button
+        self.mode_back_button.update(mouse_pos)
+        self.mode_back_button.draw(self.screen, self.button_font)
+    
+    def draw_story_character_select(self, mouse_pos: tuple, selected_character: int, stage_index: int, story_mode):
+        """Draw the character selection screen for Story Mode."""
+        # Fill with dark background
+        self.screen.fill((20, 25, 35))
+        
+        # Draw decorative lines
+        for i in range(0, SCREEN_HEIGHT, 40):
+            pygame.draw.line(self.screen, (30, 35, 45), (0, i), (SCREEN_WIDTH, i))
+        
+        # Title
+        title_text = self.title_font.render("SELECT CHARACTER", True, YELLOW)
+        title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, 60))
+        
+        # Draw title box
+        title_box = title_rect.inflate(40, 20)
+        pygame.draw.rect(self.screen, (40, 50, 70), title_box, border_radius=10)
+        pygame.draw.rect(self.screen, YELLOW, title_box, 3, border_radius=10)
+        self.screen.blit(title_text, title_rect)
+        
+        # Show which stage is being played
+        if stage_index is not None and 0 <= stage_index < len(story_mode.stages):
+            stage = story_mode.stages[stage_index]
+            stage_text = self.subtitle_font.render(f"Stage: {stage.name}", True, WHITE)
+            stage_rect = stage_text.get_rect(center=(SCREEN_WIDTH // 2, 120))
+            self.screen.blit(stage_text, stage_rect)
+        
+        # Draw character buttons
+        char_names = ["EZREAL", "ZED", "ZILEAN"]
+        char_descs = [
+            "Q: Mystic Shot\nE: Teleport",
+            "Q: Shuriken\nW: Shadow\nE: Spin",
+            "Q: Time Bomb\nE: Time Freeze"
+        ]
+        char_colors = [
+            (60, 100, 150),  # Ezreal - blue
+            (80, 60, 100),   # Zed - purple
+            (100, 80, 60),   # Zilean - bronze
+        ]
+        
+        for i, button in enumerate(self.story_char_buttons):
+            button.update(mouse_pos)
+            
+            # Highlight selected character
+            if i == selected_character:
+                # Draw selection glow
+                glow_surface = pygame.Surface((200, 220), pygame.SRCALPHA)
+                pygame.draw.rect(glow_surface, (*YELLOW, 100), (0, 0, 200, 220), border_radius=10)
+                self.screen.blit(glow_surface, (button.rect.x - 20, button.rect.y - 20))
+                button.color = tuple(min(255, c + 40) for c in char_colors[i])
+            else:
+                button.color = char_colors[i]
+            
+            button.draw(self.screen, self.button_font)
+            
+            # Draw character preview inside button
+            preview_x = button.rect.centerx
+            preview_y = button.rect.centery - 10
+            if i == 0:
+                self._draw_ezreal_preview(preview_x, preview_y)
+            elif i == 1:
+                self._draw_zed_preview(preview_x, preview_y)
+            else:
+                self._draw_zilean_preview(preview_x, preview_y)
+            
+            # Draw character name below button
+            name_text = self.subtitle_font.render(char_names[i], True, WHITE)
+            name_rect = name_text.get_rect(center=(button.rect.centerx, button.rect.bottom + 25))
+            self.screen.blit(name_text, name_rect)
+            
+            # Draw description
+            desc_lines = char_descs[i].split('\n')
+            y_offset = name_rect.bottom + 10
+            for line in desc_lines:
+                desc_text = self.font.render(line, True, (180, 180, 180))
+                desc_rect = desc_text.get_rect(center=(button.rect.centerx, y_offset))
+                self.screen.blit(desc_text, desc_rect)
+                y_offset += 22
+        
+        # Draw instruction
+        instruct_text = self.font.render("Click a character to start the stage", True, (150, 150, 150))
+        instruct_rect = instruct_text.get_rect(center=(SCREEN_WIDTH // 2, 650))
+        self.screen.blit(instruct_text, instruct_rect)
+        
+        # Draw back button
+        self.mode_back_button.update(mouse_pos)
+        self.mode_back_button.draw(self.screen, self.button_font)
+    
+    def draw_story_challenge_ui(self, story_mode, boss=None, boss_hearts=None):
+        """Draw the challenge UI during Story Mode gameplay (compact, top-left corner)."""
+        stage = story_mode.get_current_stage()
+        if not stage:
+            return
+        
+        # Compact panel in top-left corner
+        panel_x = 10
+        panel_y = 10
+        panel_width = 140
+        panel_height = 70
+        
+        # Semi-transparent dark background
+        panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        pygame.draw.rect(panel_surface, (20, 25, 35, 180), (0, 0, panel_width, panel_height), border_radius=6)
+        self.screen.blit(panel_surface, (panel_x, panel_y))
+        
+        # Thin border
+        pygame.draw.rect(self.screen, (80, 90, 110), (panel_x, panel_y, panel_width, panel_height), 1, border_radius=6)
+        
+        # Small title
+        small_font = pygame.font.Font(None, 20)
+        title_text = small_font.render("CHALLENGE", True, YELLOW)
+        self.screen.blit(title_text, (panel_x + 6, panel_y + 4))
+        
+        # Challenge description (single line, truncated if needed)
+        desc = stage.challenge.description
+        desc_surface = small_font.render(desc, True, WHITE)
+        if desc_surface.get_width() > panel_width - 12:
+            # Truncate with ellipsis
+            while desc_surface.get_width() > panel_width - 16 and len(desc) > 0:
+                desc = desc[:-1]
+                desc_surface = small_font.render(desc + "...", True, WHITE)
+        self.screen.blit(desc_surface, (panel_x + 6, panel_y + 20))
+        
+        # Progress info - single line
+        progress_text = ""
+        progress_color = WHITE
+        
+        if stage.challenge.target_kills > 0:
+            progress_text = f"{stage.challenge.kills}/{stage.challenge.target_kills}"
+            progress_color = GREEN if stage.challenge.kills >= stage.challenge.target_kills else WHITE
+        elif stage.challenge.time_limit > 0:
+            remaining = max(0, stage.challenge.time_limit - stage.challenge.elapsed_time)
+            progress_text = f"{remaining:.0f}s"
+            progress_color = RED if remaining < 5 else WHITE
+        elif stage.challenge.survive_time > 0:
+            remaining = max(0, stage.challenge.survive_time - stage.challenge.elapsed_time)
+            progress_text = f"{remaining:.0f}s"
+            progress_color = GREEN if remaining <= 0 else WHITE
+        elif stage.is_boss and boss:
+            progress_text = f"HP: {boss.health:.0f}"
+        
+        if progress_text:
+            progress_surface = small_font.render(progress_text, True, progress_color)
+            self.screen.blit(progress_surface, (panel_x + 6, panel_y + 38))
+        
+        # Status indicator (small)
+        if stage.challenge.completed:
+            status_surface = small_font.render("✓ DONE", True, GREEN)
+            self.screen.blit(status_surface, (panel_x + 6, panel_y + 54))
+        elif stage.challenge.failed:
+            status_surface = small_font.render("✗ FAIL", True, RED)
+            self.screen.blit(status_surface, (panel_x + 6, panel_y + 54))
+        
+        # Boss hearts display (compact, below challenge panel)
+        if stage.is_boss and boss_hearts is not None:
+            hearts_y = panel_y + panel_height + 5
+            self._draw_boss_hearts(panel_x, hearts_y, boss_hearts)
+    
+    def _draw_boss_hearts(self, x: int, y: int, hearts: int):
+        """Draw compact boss hearts indicator."""
+        small_font = pygame.font.Font(None, 18)
+        label = small_font.render("HP:", True, (200, 200, 200))
+        self.screen.blit(label, (x, y))
+        
+        heart_x = x + 28
+        for i in range(3):
+            if i < hearts:
+                color = (255, 80, 80)  # Red for active heart
+            else:
+                color = (60, 60, 60)  # Gray for lost heart
+            # Draw small heart
+            pygame.draw.circle(self.screen, color, (heart_x, y + 6), 5)
+            pygame.draw.circle(self.screen, color, (heart_x + 8, y + 6), 5)
+            pygame.draw.polygon(self.screen, color, [
+                (heart_x - 5, y + 8),
+                (heart_x + 4, y + 16),
+                (heart_x + 13, y + 8)
+            ])
+            heart_x += 18
+    
+    def draw_escape_prompt(self, prompt_key: int | None, progress: int, total: int):
+        """Draw the escape sequence prompt during boss grab with clear text labels."""
+        if prompt_key is None:
+            return
+        
+        # Dark overlay
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        self.screen.blit(overlay, (0, 0))
+        
+        # Use text labels instead of Unicode arrows for compatibility
+        key_map = {
+            pygame.K_LEFT: ("LEFT", "<--"),
+            pygame.K_RIGHT: ("RIGHT", "-->"),
+            pygame.K_UP: ("UP", "/\\"),
+            pygame.K_DOWN: ("DOWN", "\\/"),
+        }
+        key_name, key_symbol = key_map.get(prompt_key, ("?", "?"))
+        
+        # Draw prompt box
+        box_width = 300
+        box_height = 200
+        box_x = (SCREEN_WIDTH - box_width) // 2
+        box_y = (SCREEN_HEIGHT - box_height) // 2
+        
+        pygame.draw.rect(self.screen, (40, 45, 60), (box_x, box_y, box_width, box_height), border_radius=15)
+        pygame.draw.rect(self.screen, YELLOW, (box_x, box_y, box_width, box_height), 3, border_radius=15)
+        
+        # Title
+        title = self.subtitle_font.render("GRABBED! ESCAPE!", True, RED)
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, box_y + 30))
+        self.screen.blit(title, title_rect)
+        
+        # Draw key name in large text
+        prompt_surface = self.title_font.render(key_name, True, YELLOW)
+        prompt_rect = prompt_surface.get_rect(center=(SCREEN_WIDTH // 2, box_y + 85))
+        self.screen.blit(prompt_surface, prompt_rect)
+        
+        # Draw key symbol below
+        symbol_surface = self.menu_font.render(key_symbol, True, WHITE)
+        symbol_rect = symbol_surface.get_rect(center=(SCREEN_WIDTH // 2, box_y + 125))
+        self.screen.blit(symbol_surface, symbol_rect)
+        
+        # Progress
+        info_text = self.font.render(f"Press key {progress + 1} of {total}", True, WHITE)
+        info_rect = info_text.get_rect(center=(SCREEN_WIDTH // 2, box_y + 165))
+        self.screen.blit(info_text, info_rect)
+    
+    def draw_bite_effect(self):
+        """Draw bite effect overlay."""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((120, 20, 20, 120))
+        self.screen.blit(overlay, (0, 0))
+        bite_text = self.subtitle_font.render("CHOMP!", True, RED)
+        bite_rect = bite_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 120))
+        self.screen.blit(bite_text, bite_rect)
